@@ -38,6 +38,7 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
   const [initialPayment, setInitialPayment] = useState("");
   const [toast, setToast] = useState("");
   const [dbError, setDbError] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
 
@@ -57,19 +58,23 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
   useEffect(() => { safeFetch<Plan[]>("/api/plans").then(d => d && setPlans(d)); }, []);
 
   const handleAddPayment = async () => {
-    if (!selectedMembershipId || !payAmount) return;
+    if (!selectedMembershipId || !payAmount || isSubmitting) return;
+    setIsSubmitting(true);
     await safePost("/api/payments", { membershipId: selectedMembershipId, amount: Number(payAmount), note: payNote });
+    setIsSubmitting(false);
     showToast("Payment recorded!");
     setShowPaymentModal(false); setPayAmount(""); setPayNote("");
     fetchCustomer();
   };
 
   const handleCreateMembership = async () => {
-    if (!selectedPlanId) return;
+    if (!selectedPlanId || isSubmitting) return;
+    setIsSubmitting(true);
     await safePost("/api/memberships", {
       customerId: customer!.id, planId: Number(selectedPlanId),
       startDate, initialPayment: Number(initialPayment) || 0,
     });
+    setIsSubmitting(false);
     showToast("New membership created!");
     setShowMembershipModal(false); setSelectedPlanId(""); setInitialPayment("");
     fetchCustomer();
@@ -299,7 +304,9 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowPaymentModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleAddPayment}>Save Payment</button>
+              <button className="btn btn-primary" onClick={handleAddPayment} disabled={!payAmount || isSubmitting}>
+                {isSubmitting ? "Saving..." : "Save Payment"}
+              </button>
             </div>
           </div>
         </div>
@@ -351,8 +358,8 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowMembershipModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCreateMembership} disabled={!selectedPlanId}>
-                Create Membership
+              <button className="btn btn-primary" onClick={handleCreateMembership} disabled={!selectedPlanId || isSubmitting}>
+                {isSubmitting ? "Creating..." : "Create Membership"}
               </button>
             </div>
           </div>

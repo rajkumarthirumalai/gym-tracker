@@ -44,6 +44,7 @@ function MembersPageInner() {
   const [phoneSearched, setPhoneSearched] = useState(false);
   const [toast, setToast] = useState("");
   const [dbError, setDbError] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // New member form
   const [newName, setNewName] = useState("");
@@ -87,8 +88,11 @@ function MembersPageInner() {
   };
 
   const handleCreateCustomer = async () => {
-    if (!newName || !newPhone) return;
-    const { data, status } = await safePost<Customer>("/api/customers", { name: newName, phone: newPhone, email: newEmail });
+    const phoneToUse = newPhone || phoneSearch;
+    if (!newName || !phoneToUse || isSubmitting) return;
+    setIsSubmitting(true);
+    const { data, status } = await safePost<Customer>("/api/customers", { name: newName, phone: phoneToUse, email: newEmail });
+    setIsSubmitting(false);
     if (status === 409) {
       showToast("Phone already registered!");
       return;
@@ -107,13 +111,15 @@ function MembersPageInner() {
   };
 
   const handleCreateMembership = async () => {
-    if (!selectedCustomerId || !selectedPlanId) return;
+    if (!selectedCustomerId || !selectedPlanId || isSubmitting) return;
+    setIsSubmitting(true);
     await safePost("/api/memberships", {
       customerId: selectedCustomerId,
       planId: Number(selectedPlanId),
       startDate,
       initialPayment: Number(initialPayment) || 0,
     });
+    setIsSubmitting(false);
     showToast("Membership created!");
     setShowMembershipModal(false);
     setSelectedCustomerId(null); setSelectedPlanId(""); setInitialPayment("");
@@ -302,8 +308,8 @@ function MembersPageInner() {
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
               {phoneSearched && !foundCustomer && (
-                <button className="btn btn-primary" onClick={handleCreateCustomer}>
-                  Create & Add Membership
+                <button className="btn btn-primary" onClick={handleCreateCustomer} disabled={isSubmitting}>
+                  {isSubmitting ? "Creating..." : "Create & Add Membership"}
                 </button>
               )}
             </div>
@@ -369,8 +375,8 @@ function MembersPageInner() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowMembershipModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCreateMembership} disabled={!selectedPlanId}>
-                Create Membership
+              <button className="btn btn-primary" onClick={handleCreateMembership} disabled={!selectedPlanId || isSubmitting}>
+                {isSubmitting ? "Creating..." : "Create Membership"}
               </button>
             </div>
           </div>
