@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
-import { Plus, X, Dumbbell, Pencil } from "lucide-react";
+import { Plus, X, Dumbbell, Pencil, Trash2 } from "lucide-react";
 import { safeFetch, safePatch, safePost } from "@/lib/fetch";
 
 interface Plan { id: number; name: string; duration: number; price: number; active: boolean }
@@ -45,6 +45,18 @@ export default function PlansPage() {
     fetchPlans();
   };
 
+  const handleDelete = async (p: Plan) => {
+    if (!confirm(`Are you sure you want to completely delete "${p.name}"?`)) return;
+    const res = await fetch(`/api/plans/${p.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error || "Failed to delete plan.");
+      return;
+    }
+    showToast("Plan completely deleted!");
+    fetchPlans();
+  };
+
   return (
     <div className="app-layout">
       <Sidebar />
@@ -75,9 +87,14 @@ export default function PlansPage() {
                     <Dumbbell size={18} color="var(--accent-light)" />
                     <span style={{ fontWeight: 700, fontSize: "15px" }}>{p.name}</span>
                   </div>
-                  <button className="btn btn-secondary btn-sm" onClick={() => openEdit(p)}>
-                    <Pencil size={12} />
-                  </button>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => openEdit(p)}>
+                      <Pencil size={12} />
+                    </button>
+                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(p)}>
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 </div>
                 <div style={{ fontSize: "28px", fontWeight: 800, color: "var(--accent-light)", marginBottom: "4px" }}>
                   ₹{p.price}
