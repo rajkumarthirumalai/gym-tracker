@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Plan {
+  id          Int           @id @default(autoincrement())
+  name        String
+  duration    Int
+  price       Float
+  active      Boolean       @default(true)
+  memberships Membership[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Customer {
+  id            Int          @id @default(autoincrement())
+  name          String
+  phone         String       @unique
+  email         String?
+  status        String       @default("active")
+  lastVisitDate DateTime?
+  notes         String       @default("")
+  memberships   Membership[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model Membership {
+  id           Int       @id @default(autoincrement())
+  customerId   Int
+  planId       Int
+  startDate    DateTime
+  expiryDate   DateTime
+  status       String    @default("active")
+  reminderSent Boolean   @default(false)
+  customer     Customer  @relation(fields: [customerId], references: [id])
+  plan         Plan      @relation(fields: [planId], references: [id])
+  payments     Payment[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Payment {
+  id           Int        @id @default(autoincrement())
+  membershipId Int
+  amount       Float
+  date         DateTime   @default(now())
+  note         String     @default("")
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+}
