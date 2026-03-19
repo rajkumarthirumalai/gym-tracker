@@ -5,6 +5,8 @@ import Sidebar from "@/components/Sidebar";
 import { Search, Plus, Phone, X, ChevronRight, Users } from "lucide-react";
 import Link from "next/link";
 import { safeFetch, safePost } from "@/lib/fetch";
+import useSWR from "swr";
+import Shimmer from "@/components/Shimmer";
 
 interface Plan { id: number; name: string; duration: number; price: number }
 interface Payment { amount: number }
@@ -32,8 +34,6 @@ function getMembershipStatus(membership: Membership) {
 function MembersPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState(searchParams.get("filter") ?? "all");
   const [showAddModal, setShowAddModal] = useState(searchParams.get("action") === "add");
@@ -43,8 +43,16 @@ function MembersPageInner() {
   const [foundCustomer, setFoundCustomer] = useState<Customer | null>(null);
   const [phoneSearched, setPhoneSearched] = useState(false);
   const [toast, setToast] = useState("");
-  const [dbError, setDbError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // SWR for customers
+  const fetchUrl = `/api/customers?${search ? `search=${encodeURIComponent(search)}` : ""}`;
+  const { data: customers = [], error: customersError, isLoading, mutate: mutateCustomers } = useSWR<Customer[]>(fetchUrl);
+  const dbError = !!customersError;
+
+  // SWR for plans
+  const { data: plansData } = useSWR<Plan[]>("/api/plans");
+  useEffect(() => { if (plansData) setPlans(plansData); }, [plansData]);
 
   // New member form
   const [newName, setNewName] = useState("");
@@ -63,22 +71,13 @@ function MembersPageInner() {
   };
 
   const fetchCustomers = useCallback(async () => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    const data = await safeFetch<Customer[]>(`/api/customers?${params}`);
-    if (data === null) {
-      setDbError(true);
-      setLoading(false);
-      return;
-    }
-    setDbError(false);
-    setCustomers(data);
-    setLoading(false);
-  }, [search]);
+    mutateCustomers();
+  }, [mutateCustomers]);
 
-  useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
-  useEffect(() => { safeFetch<Plan[]>("/api/plans").then(d => d && setPlans(d)); }, []);
+  useEffect(() => {
+    const timer = setTimeout(() => mutateCustomers(), 300);
+    return () => clearTimeout(timer);
+  }, [search, mutateCustomers]);
 
   const handlePhoneSearch = async () => {
     if (!phoneSearch.trim()) return;
@@ -142,7 +141,7 @@ function MembersPageInner() {
       <Sidebar />
       <main className="main-content">
         <div className="page-header">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
             <div>
               <h2>Members</h2>
               <p>Search, manage, and track all gym members</p>
@@ -182,8 +181,10 @@ function MembersPageInner() {
           </div>
 
           {/* Member list */}
-          {loading ? (
-            <p style={{ color: "var(--text-muted)" }}>Loading…</p>
+          {isLoading && customers.length === 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {[1, 2, 3, 4, 5].map(i => <Shimmer key={i} variant="card" height="72px" />)}
+            </div>
           ) : displayed.length === 0 ? (
             <div className="empty-state">
               <Users size={48} />

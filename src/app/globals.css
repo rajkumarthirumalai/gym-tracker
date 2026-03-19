@@ -529,6 +529,48 @@ tr:hover td { background: var(--bg-card-hover); }
 }
 .expiry-row:not(:last-child) { margin-bottom: 8px; }
 
+/* ---- Shimmer Loading ---- */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--bg-card) 25%,
+    var(--bg-secondary) 50%,
+    var(--bg-card) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer-anim 1.5s infinite linear;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+@keyframes shimmer-anim {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.shimmer-text {
+  height: 14px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.shimmer-card {
+  height: 120px;
+  width: 100%;
+  border: 1px solid var(--border);
+}
+
+.shimmer-stat {
+  height: 100px;
+  width: 100%;
+}
+
+.shimmer-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
 /* ---- Mobile ---- */
 .mobile-menu-btn {
   display: none;
@@ -541,7 +583,7 @@ tr:hover td { background: var(--bg-card-hover); }
   position: fixed;
   top: 16px;
   left: 16px;
-  z-index: 90;
+  z-index: 1000;
 }
 .mobile-overlay {
   display: none;
@@ -554,17 +596,46 @@ tr:hover td { background: var(--bg-card-hover); }
   cursor: pointer;
 }
 
+.dashboard-expiring-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.stats-overview {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
 @media (max-width: 768px) {
   .mobile-menu-btn { display: flex; }
+  .mobile-menu-btn.hidden { display: none; }
   .mobile-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 95; display: block; backdrop-filter: blur(2px); }
   .mobile-close-btn { display: block; }
   
   .sidebar { transform: translateX(-100%); transition: transform 0.3s; z-index: 100; }
   .sidebar.open { transform: translateX(0); }
-  .main-content { margin-left: 0; padding-top: 60px; }
+  .main-content { 
+    margin-left: 0; 
+    padding-top: 0; 
+    width: 100vw; 
+    overflow-x: hidden; 
+  }
   .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .dashboard-expiring-grid { grid-template-columns: 1fr; }
   .page-body { padding: 16px; }
-  .page-header { padding: 16px; padding-left: 60px; }
+  .page-header { padding: 22px 16px 16px 72px; min-height: 74px; }
   .card { padding: 16px; }
   table th, table td { font-size: 12px; padding: 10px 8px; }
+  
+  .member-card {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .member-meta {
+    justify-content: space-between;
+    width: 100%;
+  }
 }

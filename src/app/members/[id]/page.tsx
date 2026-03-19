@@ -1,9 +1,12 @@
 "use client";
-import { useEffect, useState, use } from "react";
+import React, { useEffect, useState, use } from "react";
 import Sidebar from "@/components/Sidebar";
-import { ArrowLeft, Plus, CreditCard, X, StopCircle, RefreshCw, Calendar } from "lucide-react";
+import { ArrowLeft, Plus, CreditCard, X, StopCircle, CheckCircle, RefreshCw, Calendar } from "lucide-react";
 import Link from "next/link";
-import { safeFetch, safePost, safePatch } from "@/lib/fetch";
+import { safePost, safePatch } from "@/lib/fetch";
+import useSWR from "swr";
+import Shimmer from "@/components/Shimmer";
+import ConfirmModal from "@/components/ConfirmModal";
 
 interface Plan { id: number; name: string; duration: number; price: number }
 interface Payment { id: number; amount: number; date: string; note: string }
@@ -25,9 +28,9 @@ function getStatus(m: Membership) {
 
 export default function MemberDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [customer, setCustomer] = useState<Customer | null>(null);
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: customer, isLoading, mutate: mutateCustomer, error } = useSWR<Customer>(`/api/customers/${id}`);
+  const { data: plans = [] } = useSWR<Plan[]>("/api/plans");
+
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showMembershipModal, setShowMembershipModal] = useState(false);
   const [selectedMembershipId, setSelectedMembershipId] = useState<number | null>(null);
@@ -37,79 +40,91 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
   const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
   const [initialPayment, setInitialPayment] = useState("");
   const [toast, setToast] = useState("");
-  const [dbError, setDbError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [stopMembershipModal, setStopMembershipModal] = useState<number | null>(null);
+  const [inactiveModal, setInactiveModal] = useState(false);
+
+  const dbError = !!error;
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
-
-  const fetchCustomer = async () => {
-    const data = await safeFetch<Customer>(`/api/customers/${id}`);
-    if (!data) {
-      setDbError(true);
-      setLoading(false);
-      return;
-    }
-    setDbError(false);
-    setCustomer(data);
-    setLoading(false);
-  };
-
-  useEffect(() => { fetchCustomer(); }, [id]);
-  useEffect(() => { safeFetch<Plan[]>("/api/plans").then(d => d && setPlans(d)); }, []);
 
   const handleAddPayment = async () => {
     if (!selectedMembershipId || !payAmount || isSubmitting) return;
     setIsSubmitting(true);
     await safePost("/api/payments", { membershipId: selectedMembershipId, amount: Number(payAmount), note: payNote });
-    setIsSubmitting(false);
+    setIsSubmitting(true); // Technically already true, but for clarity
     showToast("Payment recorded!");
     setShowPaymentModal(false); setPayAmount(""); setPayNote("");
-    fetchCustomer();
+    mutateCustomer();
+    setIsSubmitting(false);
   };
 
   const handleCreateMembership = async () => {
-    if (!selectedPlanId || isSubmitting) return;
+    if (!selectedPlanId || !customer || isSubmitting) return;
     setIsSubmitting(true);
     await safePost("/api/memberships", {
-      customerId: customer!.id, planId: Number(selectedPlanId),
+      customerId: customer.id, planId: Number(selectedPlanId),
       startDate, initialPayment: Number(initialPayment) || 0,
     });
-    setIsSubmitting(false);
     showToast("New membership created!");
     setShowMembershipModal(false); setSelectedPlanId(""); setInitialPayment("");
-    fetchCustomer();
+    mutateCustomer();
+    setIsSubmitting(false);
   };
 
-  const handleStopMembership = async (mId: number) => {
-    if (!confirm("Mark this membership as stopped?")) return;
-    await safePatch(`/api/memberships/${mId}`, { status: "stopped" });
+  const handleStopMembership = async () => {
+    if (!stopMembershipModal) return;
+    setIsSubmitting(true);
+    await safePatch(`/api/memberships/${stopMembershipModal}`, { status: "stopped" });
     showToast("Membership stopped");
-    fetchCustomer();
+    mutateCustomer();
+    setStopMembershipModal(null);
+    setIsSubmitting(false);
   };
 
   const handleMarkInactive = async () => {
-    if (!confirm("Mark this member as inactive?")) return;
+    setIsSubmitting(true);
     await safePatch(`/api/customers/${id}`, { status: "inactive" });
-    showToast("Member marked inactive");
-    fetchCustomer();
+    showToast("Member deactivated");
+    mutateCustomer();
+    setInactiveModal(false);
+    setIsSubmitting(false);
+  };
+
+  const handleMarkActive = async () => {
+    setIsSubmitting(true);
+    await safePatch(`/api/customers/${id}`, { status: "active" });
+    showToast("Member activated");
+    mutateCustomer();
+    setIsSubmitting(false);
   };
 
   const handleUpdateLastVisit = async () => {
     await safePatch(`/api/customers/${id}`, { lastVisitDate: new Date().toISOString() });
-    showToast("Last visit updated!");
-    fetchCustomer();
+    showToast("Visit recorded!");
+    mutateCustomer();
   };
 
-  if (loading) return (
-    <div className="app-layout"><Sidebar />
+  const DetailsLoading = () => (
+    <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "24px" }}>
+      <Shimmer variant="card" height="150px" />
+      <Shimmer variant="card" height="100px" />
+      <Shimmer variant="card" height="200px" />
+    </div>
+  );
+
+  if (isLoading && !customer) return (
+    <div className="app-layout">
+      <Sidebar />
       <main className="main-content">
-        <div style={{ padding: "60px 32px", textAlign: "center", color: "var(--text-muted)" }}>Loading…</div>
+        <DetailsLoading />
       </main>
     </div>
   );
 
-  if (!customer) return (
-    <div className="app-layout"><Sidebar />
+  if (!customer && !isLoading) return (
+    <div className="app-layout">
+      <Sidebar />
       <main className="main-content">
         {dbError ? (
           <div style={{ padding: "60px 32px", textAlign: "center" }}>
@@ -123,6 +138,8 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
     </div>
   );
 
+  if (!customer) return null; // Safety for TS
+
   const activeMembership = customer.memberships.find(m => m.status === "active" && new Date(m.expiryDate) > new Date());
   const selectedPlan = plans.find(p => p.id === Number(selectedPlanId));
 
@@ -134,7 +151,7 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
           <Link href="/members" className="btn btn-secondary btn-sm" style={{ marginBottom: "12px", display: "inline-flex" }}>
             <ArrowLeft size={13} /> Back
           </Link>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
             <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
               <div className="member-avatar" style={{ width: 52, height: 52, fontSize: 20 }}>
                 {customer.name.charAt(0).toUpperCase()}
@@ -146,15 +163,19 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
             </div>
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
               <button className="btn btn-secondary btn-sm" onClick={handleUpdateLastVisit}>
-                <Calendar size={13} /> Check-in Today
+                <Calendar size={13} /> Record Visit
               </button>
-              {customer.status === "active" && (
-                <button className="btn btn-danger btn-sm" onClick={handleMarkInactive}>
-                  <StopCircle size={13} /> Mark Inactive
+              {customer.status === "active" ? (
+                <button className="btn btn-danger btn-sm" onClick={() => setInactiveModal(true)}>
+                  <StopCircle size={13} /> Deactivate
+                </button>
+              ) : (
+                <button className="btn btn-success btn-sm" onClick={handleMarkActive}>
+                  <CheckCircle size={13} /> Activate
                 </button>
               )}
               <button className="btn btn-primary btn-sm" onClick={() => setShowMembershipModal(true)}>
-                <Plus size={13} /> New Membership
+                <Plus size={13} /> Add Plan
               </button>
             </div>
           </div>
@@ -162,7 +183,7 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
 
         <div className="page-body">
           {/* Info strip */}
-          <div className="card" style={{ marginBottom: "24px", display: "flex", gap: "24px", flexWrap: "wrap" }}>
+          <div className="card stats-overview">
             <div>
               <div className="section-title" style={{ marginBottom: "4px" }}>Member Status</div>
               <span className={`badge badge-${customer.status === "active" ? "green" : "red"}`}>
@@ -178,7 +199,7 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
               </div>
             </div>
             <div>
-              <div className="section-title" style={{ marginBottom: "4px" }}>Total Memberships</div>
+              <div className="section-title" style={{ marginBottom: "4px" }}>Past Memberships</div>
               <div style={{ fontSize: "13px" }}>{customer.memberships.length}</div>
             </div>
             {activeMembership && (
@@ -219,9 +240,9 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
                       </div>
                       <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                         <span className={`badge badge-${mStatus.color}`}>{mStatus.label}</span>
-                        {m.status === "active" && (
-                          <button className="btn btn-danger btn-sm" onClick={() => handleStopMembership(m.id)}>
-                            Stop
+                        {m.status === "active" && mStatus.label !== "Expired" && (
+                          <button className="btn btn-danger btn-sm" onClick={() => setStopMembershipModal(m.id)}>
+                            Cancel Plan
                           </button>
                         )}
                       </div>
@@ -262,7 +283,7 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
                           <div key={p.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", padding: "5px 0", borderBottom: "1px solid var(--border-subtle)" }}>
                             <span style={{ color: "var(--text-secondary)" }}>{new Date(p.date).toLocaleDateString("en-IN")}</span>
                             <span style={{ color: "var(--green)", fontWeight: 600 }}>+ ₹{p.amount}</span>
-                            {p.note && <span style={{ color: "var(--text-muted)" }}>{p.note}</span>}
+                            {p.note && <span style={{ color: "var(--text-muted)", marginLeft: "8px" }}>({p.note})</span>}
                           </div>
                         ))}
                       </div>
@@ -273,7 +294,7 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
                         className="btn btn-success btn-sm"
                         onClick={() => { setSelectedMembershipId(m.id); setPayAmount(String(pending)); setShowPaymentModal(true); }}
                       >
-                        <CreditCard size={13} /> Record Payment
+                        <CreditCard size={13} /> Add Payment
                       </button>
                     )}
                   </div>
@@ -289,7 +310,7 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
         <div className="modal-overlay" onClick={() => setShowPaymentModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Record Payment</h3>
+              <h3>Add Payment</h3>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowPaymentModal(false)}><X size={14} /></button>
             </div>
             <div className="modal-body">
@@ -371,6 +392,28 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
           <div className="toast toast-success">{toast}</div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={inactiveModal}
+        title="Deactivate Member"
+        message={`Deactivate "${customer.name}"? They will no longer show up in the active members list.`}
+        confirmText="Deactivate"
+        confirmColor="yellow"
+        onConfirm={handleMarkInactive}
+        onCancel={() => setInactiveModal(false)}
+        isLoading={isSubmitting}
+      />
+
+      <ConfirmModal
+        isOpen={!!stopMembershipModal}
+        title="Cancel Plan"
+        message={`Are you sure you want to cancel this plan? It will be marked as stopped and will not renew.`}
+        confirmText="Cancel Plan"
+        confirmColor="red"
+        onConfirm={handleStopMembership}
+        onCancel={() => setStopMembershipModal(null)}
+        isLoading={isSubmitting}
+      />
     </div>
   );
 }

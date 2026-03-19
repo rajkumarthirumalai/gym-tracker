@@ -1,32 +1,28 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import { Plus, X, Dumbbell, Pencil, Trash2 } from "lucide-react";
-import { safeFetch, safePatch, safePost } from "@/lib/fetch";
+import { safePatch, safePost } from "@/lib/fetch";
+import useSWR from "swr";
+import Shimmer from "@/components/Shimmer";
+import ConfirmModal from "@/components/ConfirmModal";
 
 interface Plan { id: number; name: string; duration: number; price: number; active: boolean }
 
 export default function PlansPage() {
-  const [plans, setPlans] = useState<Plan[]>([]);
+  const { data: plans = [], isLoading, mutate: mutatePlans, error } = useSWR<Plan[]>("/api/plans");
   const [showModal, setShowModal] = useState(false);
   const [editPlan, setEditPlan] = useState<Plan | null>(null);
   const [name, setName] = useState("");
   const [duration, setDuration] = useState("");
   const [price, setPrice] = useState("");
   const [toast, setToast] = useState("");
+  const [deletePlan, setDeletePlan] = useState<Plan | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const [dbError, setDbError] = useState(false);
+  const dbError = !!error;
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
-
-  const fetchPlans = async () => {
-    const data = await safeFetch<Plan[]>("/api/plans");
-    if (data === null) { setDbError(true); return; }
-    setDbError(false);
-    setPlans(data);
-  };
-
-  useEffect(() => { fetchPlans(); }, []);
 
   const openAdd = () => { setEditPlan(null); setName(""); setDuration(""); setPrice(""); setShowModal(true); };
   const openEdit = (p: Plan) => { setEditPlan(p); setName(p.name); setDuration(String(p.duration)); setPrice(String(p.price)); setShowModal(true); };
@@ -42,20 +38,35 @@ export default function PlansPage() {
       showToast("Plan created!");
     }
     setShowModal(false);
-    fetchPlans();
+    mutatePlans();
   };
 
-  const handleDelete = async (p: Plan) => {
-    if (!confirm(`Are you sure you want to completely delete "${p.name}"?`)) return;
-    const res = await fetch(`/api/plans/${p.id}`, { method: "DELETE" });
+  const confirmDelete = async () => {
+    if (!deletePlan) return;
+    setIsDeleting(true);
+    const res = await fetch(`/api/plans/${deletePlan.id}`, { method: "DELETE" });
+    setIsDeleting(false);
+    
     if (!res.ok) {
       const err = await res.json();
       alert(err.error || "Failed to delete plan.");
+      setDeletePlan(null);
       return;
     }
     showToast("Plan completely deleted!");
-    fetchPlans();
+    setDeletePlan(null);
+    mutatePlans();
   };
+
+  const handleDelete = (p: Plan) => {
+    setDeletePlan(p);
+  };
+
+  const PlansLoading = () => (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "16px" }}>
+      {[1, 2, 3].map(i => <Shimmer key={i} variant="card" height="120px" />)}
+    </div>
+  );
 
   return (
     <div className="app-layout">
@@ -79,39 +90,44 @@ export default function PlansPage() {
               ⚠️ <strong>Database not connected.</strong> Update <code>.env</code> and run <code>npx prisma migrate dev</code> to get started.
             </div>
           )}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "16px" }}>
-            {plans.map(p => (
-              <div key={p.id} className="card">
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    <Dumbbell size={18} color="var(--accent-light)" />
-                    <span style={{ fontWeight: 700, fontSize: "15px" }}>{p.name}</span>
+
+          {isLoading && plans.length === 0 ? (
+            <PlansLoading />
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "16px" }}>
+              {plans.map(p => (
+                <div key={p.id} className="card">
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <Dumbbell size={18} color="var(--accent-light)" />
+                      <span style={{ fontWeight: 700, fontSize: "15px" }}>{p.name}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => openEdit(p)}>
+                        <Pencil size={12} />
+                      </button>
+                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(p)}>
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", gap: "6px" }}>
-                    <button className="btn btn-secondary btn-sm" onClick={() => openEdit(p)}>
-                      <Pencil size={12} />
-                    </button>
-                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(p)}>
-                      <Trash2 size={12} />
-                    </button>
+                  <div style={{ fontSize: "28px", fontWeight: 800, color: "var(--accent-light)", marginBottom: "4px" }}>
+                    ₹{p.price}
+                  </div>
+                  <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                    {p.duration} days · {(p.price / p.duration).toFixed(1)}/day
                   </div>
                 </div>
-                <div style={{ fontSize: "28px", fontWeight: 800, color: "var(--accent-light)", marginBottom: "4px" }}>
-                  ₹{p.price}
+              ))}
+              {plans.length === 0 && (
+                <div className="empty-state" style={{ gridColumn: "1 / -1" }}>
+                  <Dumbbell size={40} />
+                  <h3>No plans yet</h3>
+                  <p>Add your first membership plan.</p>
                 </div>
-                <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                  {p.duration} days · {(p.price / p.duration).toFixed(1)}/day
-                </div>
-              </div>
-            ))}
-            {plans.length === 0 && (
-              <div className="empty-state">
-                <Dumbbell size={40} />
-                <h3>No plans yet</h3>
-                <p>Add your first membership plan.</p>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </main>
 
@@ -156,6 +172,17 @@ export default function PlansPage() {
           <div className="toast toast-success">{toast}</div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!deletePlan}
+        title="Delete Plan"
+        message={`Are you sure you want to completely delete the plan "${deletePlan?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        confirmColor="red"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeletePlan(null)}
+        isLoading={isDeleting}
+      />
     </div>
   );
 }

@@ -17,7 +17,7 @@ export default function Sidebar() {
 
   return (
     <>
-      <button className="mobile-menu-btn" onClick={() => setIsOpen(true)}>
+      <button className={`mobile-menu-btn ${isOpen ? 'hidden' : ''}`} onClick={() => setIsOpen(!isOpen)}>
         <Menu size={24} />
       </button>
 
